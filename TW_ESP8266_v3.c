@@ -542,15 +542,40 @@ esp8266StateMachines    MdmMakeReady(espOperCommand OperCmd, esp8266StateMachine
                  {
                      SendDataToESP("AT+CWMODE_CUR=1\r\n"); // station mode set
                      //_delay_cycles(SystemFreq*3);
+/*
                      res = NULL;
                      do
                      {
-                         res = strstr((const char *)_MdmBuffer,"AT+CWMODE_CUR=1"); //===> error detected here. cannot compare like this as the
+                         res = mdmReplySearch((const char *)_MdmBuffer, "OK");
+                         res = mdmReplySearch((const char *)_MdmBuffer, "FAIL");
+//                         res = strstr((const char *)_MdmBuffer,"AT+CWMODE_CUR=1"); //===> error detected here. cannot compare like this as the
                                                                                      //buffer is filled with other value that remoes the condition of res==NULL
                          _delay_cycles(SystemFreq/5);
-                         //res = strstr((const char *)_MdmBuffer,"FAIL");
+
                      } while (res == NULL); // Blocking Call
-                     res += 20;
+*/
+                     RetryTimeout2 = 30;
+                     do
+                     {
+                         _delay_cycles(SystemFreq/5);
+                         res = NULL;
+                         res = strstr((const char *)_MdmBuffer,"FAIL");
+                         _delay_cycles(SystemFreq/5);
+                         if(*res == 'F')
+                         {
+
+                             break;
+                         }
+                         res = strstr((const char *)_MdmBuffer,"OK");
+                         _delay_cycles(SystemFreq/5);
+                         if(*res == 'O')
+                         {
+
+                             break;
+                         }
+                         RetryTimeout2--;
+                     } while ((res == NULL)&&(RetryTimeout2>0));
+
                      if(*res=='O')
                      {
                          res_type = 0; // 0 = success
@@ -579,44 +604,34 @@ esp8266StateMachines    MdmMakeReady(espOperCommand OperCmd, esp8266StateMachine
                                   do
                                   {
                                       SendDataToESP("AT+CWJAP_CUR=\"");
-                                      SendDataToESP((const uint8_t*)WifiParams._wifiSSID);
+                                      SendDataToESP((const char*)WifiParams._wifiSSID);
                                       SendDataToESP("\",\"");
-                                      SendDataToESP((const uint8_t*)WifiParams._wifiPSWD);
+                                      SendDataToESP((const char*)WifiParams._wifiPSWD);
                                       SendDataToESP("\"\r\n"); // later ssid and psswd will be fetched from LCD
                                       _delay_cycles(SystemFreq*3);
-                                      RetryTimeout5 = 10;
+                                      RetryTimeout5 = 20;
                                       do
                                       {
                                           //res = strstr((const char *)_MdmBuffer,"OK");
+                                          __delay_cycles(SystemFreq);
                                           res = NULL;
                                           res = strstr((const char *)_MdmBuffer,"OK");
-                                          _delay_cycles(SystemFreq/2);
                                           if(*res == 'O')
                                           {
                                               break;
                                           }
                                           res = NULL;
                                           res = strstr((const char *)_MdmBuffer,"FAIL");
-                                          _delay_cycles(SystemFreq/2);
                                           if(*res == 'F')
                                           {
                                               break;
                                           }
                                           RetryTimeout5 --;
-                                      } while ((res == NULL)&&(RetryTimeout5>0)); // no more Blocking Call
+                                      } while (RetryTimeout5>0); // no more Blocking Call
                                       if(res!=NULL)
                                       {
                                           if((*res)=='F')
                                           {
-                                              /* Standard replies when Failure occurs
-                                               * AT+CWJAP_CUR="?",""<\r>
-                                                 <\r>
-                                                    <\n>WIFI DISCONNECT<\r>
-                                                    <\n>+CWJAP:3<\r>
-                                                    <\n><\r>
-                                                    <\n>FAIL<\r>
-                                                    <\n>
-                                               */
                                               res = NULL;
                                               res = strstr((const char *)_MdmBuffer,"CWJAP:");
                                               res = res + 6;// point to <error code> in +CWJAP_CUR:<error code>
@@ -1380,7 +1395,11 @@ esp8266StateMachines    MdmMakeReady(espOperCommand OperCmd, esp8266StateMachine
 //////////////////////
         case _Esp_UDP_Close_Request:
             RetSts = currState;
-            if((RetSts == _E8266_SEND_OK_RECVD)||(RetSts == _E8266_CIPCLOSE_UDP)||(RetSts == _E8266_CIPSTART_DNS_ERROR))
+            if((RetSts == _E8266_SEND_OK_RECVD)||
+                    (RetSts == _E8266_CIPCLOSE_UDP)||
+                    (RetSts == _E8266_CIPSTART_DNS_ERROR)||
+                    (RetSts == _E8266_CIPSTART_ERROR)||
+                    (RetSts == _E8266_CIPSTART_TIMEOUT))
             {
                 RetryTimeout1 = 5;
                 do
@@ -1513,13 +1532,14 @@ esp8266StateMachines    _provision_Connect_GETcall_ESP(esp8266StateMachines _sta
         if(getChkNeeded)
         {
             k = MdmMakeReady(_Esp_GET_Request, k,_GET_URL,(char*)_SERVER_URL,NULL,NULL,_E8266_NON_UDP_MODE,0);
-            if(k != _E8266_CIPSTART_DNS_ERROR)
+            if(k == ((_E8266_CIPSTART_DNS_ERROR)||(_E8266_CIPSTART_ERROR)||(_E8266_CIPSTART_TIMEOUT)))
             {
-                k = MdmMakeReady(_Esp__repeated_send_Request, k,_GET_URL,(char*)_SERVER_URL,NULL,NULL,_E8266_NON_UDP_MODE,0);
+                k=MdmMakeReady(_Esp_UDP_Close_Request, k, NULL, NULL, NULL, NULL, _E8266_NON_UDP_MODE, 0);
+
             }
             else
             {
-                k=MdmMakeReady(_Esp_UDP_Close_Request, k, NULL, NULL, NULL, NULL, _E8266_NON_UDP_MODE, 0);
+                k = MdmMakeReady(_Esp__repeated_send_Request, k,_GET_URL,(char*)_SERVER_URL,NULL,NULL,_E8266_NON_UDP_MODE,0);
             }
             _delay_cycles(SystemFreq*5);
         }
