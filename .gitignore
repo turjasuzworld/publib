@@ -1,0 +1,7 @@
+/.launches
+/.settings
+/MCU+Image
+/targetConfigs
+/userFiles
+*.ccsproject
+*.cproject
