@@ -54,8 +54,10 @@ ntpOperCommand      _syncNtpWithGoogleServer(const char* _ntpGoogleServerIP, con
      __delay_cycles(SystemFreq);
      __delay_cycles(SystemFreq);
      __delay_cycles(SystemFreq);
-     findNtpData = mdmReplySearch((const char *)_MdmBuffer, "+IPD");
-     if(findNtpData != "Timeout")
+     //findNtpData = mdmReplySearch((const char *)_MdmBuffer, "+IPD");
+     //findNtpData = strstr(_MdmBuffer, "+IPD");
+     findNtpData = memchr(_MdmBuffer,'+',sizeof(_MdmBuffer));
+     if(findNtpData)
      {
       ntpStateMachine = _NTP_PARSING_SRVR_DATA;
       findNtpData += 8; // skip the +IPD,48: part to get the data
@@ -143,7 +145,7 @@ ntpOperCommand      _syncNtpWithGoogleServer(const char* _ntpGoogleServerIP, con
              BQ32000_Setting[6] <<= 4;
              BQ32000_Setting[6] |= ((ts.tm_year%10)& 0x0F);
 
-#ifdef       RTC_TYPE_BQ32000
+#if       RTC_TYPE_BQ32000
              WriteTo24CxxEEPROMMultiBytes_InterruptMode(0xD0, 2, 0, 10, BQ32000_Setting);
              __delay_cycles(SystemFreq);
              ReadFrom24CxxEEPROMMultiBytes_InterruptMode(0xD0, 2, 0, 7, TimeRead);
@@ -162,6 +164,47 @@ ntpOperCommand      _syncNtpWithGoogleServer(const char* _ntpGoogleServerIP, con
              }
 #elif        RTC_TYPE_DS1307
 
+#elif        RTC_TYPE_MSP430F5419A_RTC_A
+
+             /*
+              *  Set the RTC inside MSP430
+              */
+             // Initialize LFXT1
+             P7SEL |= 0x03;                            // Select XT1
+             UCSCTL6 &= ~(XT1OFF);                     // XT1 On
+             UCSCTL6 |= XCAP_3;                        // Internal load cap
+             // Configure RTC_A
+             //RTCCTL01 |= RTCTEVIE;
+             RTCCTL01 |= RTCRDYIE + RTCBCD + RTCHOLD + RTCMODE;
+                                                       // RTC enable, BCD mode, RTC hold
+                                                       // enable RTC read ready interrupt
+                                                       // enable RTC time event interrupt
+
+             RTCYEAR = 0x2000;                         // Year = 0x2000 + difference from GOOG
+             RTCYEAR |= BQ32000_Setting[6];
+             RTCMON = BQ32000_Setting[5];              // Month
+             RTCDAY = BQ32000_Setting[4];            // Day
+             RTCDOW = BQ32000_Setting[3];            // Day of week = 0x01 = Monday
+             RTCHOUR = BQ32000_Setting[2];                           // Hour = 0x10
+             RTCMIN = BQ32000_Setting[1];                            // Minute = 0x32
+             RTCSEC = BQ32000_Setting[0];                            // Seconds = 0x45
+
+//             RTCADOWDAY = 0x2;                         // RTC Day of week alarm = 0x2
+//             RTCADAY = 0x20;                           // RTC Day Alarm = 0x20
+//             RTCAHOUR = 0x10;                          // RTC Hour Alarm
+//             RTCAMIN = 0x23;                           // RTC Minute Alarm
+
+             RTCCTL01 &= ~(RTCHOLD);                   // Start RTC calendar mode
+
+
+             // Loop until XT1,XT2 & DCO fault flag is cleared
+             do
+             {
+               UCSCTL7 &= ~(XT2OFFG + XT1LFOFFG + XT1HFOFFG + DCOFFG);
+                                                       // Clear XT2,XT1,DCO fault flags
+               SFRIFG1 &= ~OFIFG;                      // Clear fault flags
+             }while (SFRIFG1&OFIFG);                   // Test oscillator fault flag
+             ntpStateMachine = _NTP_BQ32000_SET_SUCCESS;
 #endif
 
          }
@@ -254,4 +297,37 @@ String formatDateTime2String(const char * format, time_t timeEpoch)
 //        return CONVERT_SUCCESS;
 //    }
 //}
+#ifdef      RTC_TYPE_MSP430F5419A_RTC_A
+#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
+#pragma vector=RTC_VECTOR
+__interrupt void RTC_ISR(void)
+#elif defined(__GNUC__)
+void __attribute__ ((interrupt(RTC_VECTOR))) RTC_ISR (void)
+#else
+#error Compiler not supported!
+#endif
+{
+  switch(__even_in_range(RTCIV,16))
+  {
+    case RTC_NONE:                          // No interrupts
+      break;
+    case RTC_RTCRDYIFG:                     // RTCRDYIFG
+        __no_operation();
+      break;
+    case RTC_RTCTEVIFG:                     // RTCEVIFG
+      __no_operation();                     // Interrupts every minute
+      break;
+    case RTC_RTCAIFG:                       // RTCAIFG
+      break;
+    case RTC_RT0PSIFG:                      // RT0PSIFG
+      break;
+    case RTC_RT1PSIFG:                      // RT1PSIFG
+      break;
+    case 12: break;                         // Reserved
+    case 14: break;                         // Reserved
+    case 16: break;                         // Reserved
+    default: break;
+  }
+}
+#endif
 

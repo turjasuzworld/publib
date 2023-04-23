@@ -8,13 +8,14 @@
 #ifndef TW_MSP430_NTP_H_
 #define TW_MSP430_NTP_H_
 
-#define     NTP_PACKET_TIMESTAMP_STRT_LOC   40
-#define     CONFIGURE_BQ32000_AFTER_SYNC    true
+#define     NTP_PACKET_TIMESTAMP_STRT_LOC               40
+#define     CONFIGURE_BQ32000_AFTER_SYNC                true
 #define     CONFIGURE_FOR_IST               true
-#define     RTC_TYPE_BQ32000                true
+#define     RTC_TYPE_BQ32000                false
 #define     RTC_TYPE_DS1307                 false
+#define     RTC_TYPE_MSP430F5419A_RTC_A     true
 
-#include "TW_ESP8266_v3.h"
+#include "ESPv4/TW_ESP8266_v4.h"
 #include <Time.h>
 //Conditional Compilation - set in ntp header
 #ifdef  CONFIGURE_BQ32000_AFTER_SYNC
